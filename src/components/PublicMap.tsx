@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react';
-import { Map, List, X, Clock, MapPin } from 'lucide-react';
+import { Map, List, X, Clock, MapPin, ClipboardCheck } from 'lucide-react';
 import MapView from './MapView';
 import StatusBadge from './StatusBadge';
 import { CATEGORY_LABELS, CATEGORY_ICONS, type Complaint } from '@/lib/supabase';
@@ -8,6 +8,8 @@ import { useAuth } from '@/lib/auth';
 
 interface PublicMapProps {
   complaints: Complaint[];
+  canTakeCases?: boolean;
+  onTakeCase?: (complaintId: string) => void;
 }
 
 function timeAgo(dateStr: string): string {
@@ -21,7 +23,7 @@ function timeAgo(dateStr: string): string {
   return 'Tani';
 }
 
-export default function PublicMap({ complaints }: PublicMapProps) {
+export default function PublicMap({ complaints, canTakeCases = false, onTakeCase }: PublicMapProps) {
   const { user } = useAuth();
   const [selected, setSelected] = useState<Complaint | null>(null);
   const [showList, setShowList] = useState(false);
@@ -136,7 +138,11 @@ export default function PublicMap({ complaints }: PublicMapProps) {
                   ✓ Qytetari ka konfirmuar zgjidhjen
                 </div>
               )}
-              {(isReporter(selected.id) || (user && selected.user_id === user.id)) && (
+              {canTakeCases && (
+                <button onClick={() => { onTakeCase?.(selected.id); setSelected(null); }} className="w-full flex items-center justify-center gap-2 py-3 rounded-xl bg-blue-600 text-white text-sm font-semibold">
+                  <ClipboardCheck size={18} /> Merre rastin
+                </button>
+              )}              {(isReporter(selected.id) || (user && selected.user_id === user.id)) && (
                 <div className="text-xs text-blue-600 bg-blue-50 border border-blue-200 rounded-lg px-3 py-2 font-medium">
                   Kjo ankesë është e juaja
                 </div>

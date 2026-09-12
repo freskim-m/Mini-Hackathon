@@ -24,22 +24,19 @@ export default function AuthScreen({ onBack }: AuthScreenProps) {
     setError(null);
     setSuccess(null);
 
-    if (mode === 'login') {
-      const { error: errMsg } = await signIn(email.trim(), password);
-      if (errMsg) {
-        setError(errMsg.includes('Invalid login') ? 'Email ose fjalëkalim i gabuar.' : errMsg);
-        setLoading(false);
-      }
-    } else {
-      const { error: errMsg } = await signUp(email.trim(), password);
-      if (errMsg) {
-        setError(errMsg);
-        setLoading(false);
+    try {
+      if (mode === 'login') {
+        const { error: errMsg } = await signIn(email.trim(), password);
+        if (errMsg) setError(errMsg.includes('Invalid login') ? 'Email ose fjalëkalim i gabuar.' : errMsg);
       } else {
-        setSuccess('Llogaria u krijua! Tani jeni të kyçur.');
-        setLoading(false);
+        const { error: errMsg } = await signUp(email.trim(), password);
+        if (errMsg) setError(errMsg);
+        else setSuccess('Llogaria u krijua. Kontrolloni emailin nëse kërkohet konfirmim.');
       }
-    }
+    } finally {
+      setLoading(false);
+    };
+
   };
 
   return (
@@ -125,7 +122,7 @@ export default function AuthScreen({ onBack }: AuthScreenProps) {
           </button>
 
           <p className="text-xs text-slate-400 text-center">
-            Mund të raportoni pa kyçje, por për historik të ruajtur duhet llogari.
+            Demo: superadmin@demo.local / Demo123! · admin@demo.local / Admin123! · user@demo.local / User123!
           </p>
         </div>
 

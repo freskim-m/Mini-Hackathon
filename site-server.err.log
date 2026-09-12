@@ -1,0 +1,5 @@
+127.0.0.1 - - [12/Sep/2026 14:15:57] "GET / HTTP/1.1" 200 -
+127.0.0.1 - - [12/Sep/2026 14:15:57] "GET /assets/index-DDgmfk2I.css HTTP/1.1" 200 -
+127.0.0.1 - - [12/Sep/2026 14:15:58] "GET /assets/index-DACm7ecE.js HTTP/1.1" 200 -
+127.0.0.1 - - [12/Sep/2026 14:15:58] code 404, message File not found
+127.0.0.1 - - [12/Sep/2026 14:15:58] "GET /vite.svg HTTP/1.1" 404 -

@@ -10,13 +10,19 @@ import AuthScreen from '@/components/AuthScreen';
 
 type Tab = 'map' | 'report' | 'mine' | 'admin';
 
+const DEMO_COMPLAINTS: Complaint[] = [
+  { id: 'demo-1', category: 'pothole', description: 'Gropë e madhe në rrugë pranë shkollës.', image_url: null, lat: 42.6629, lng: 21.1655, status: 'pranuar', reporter_token: '', confirmed_by_reporter: false, user_id: null, created_at: new Date().toISOString(), updated_at: new Date().toISOString() },
+  { id: 'demo-2', category: 'streetlight', description: 'Ndriçimi publik nuk punon.', image_url: null, lat: 42.6595, lng: 21.1556, status: 'ne_punim', reporter_token: '', confirmed_by_reporter: false, user_id: '00000000-0000-4000-8000-000000000003', created_at: new Date(Date.now() - 86400000).toISOString(), updated_at: new Date().toISOString() },
+];
+
 export default function App() {
-  const { user, isAdmin, loading: authLoading, signOut } = useAuth();
+  const { user, isAdmin, isSuperadmin, loading: authLoading, signOut } = useAuth();
   const [tab, setTab] = useState<Tab>('map');
   const [complaints, setComplaints] = useState<Complaint[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showAuth, setShowAuth] = useState(false);
+  const [adminCaseFromMap, setAdminCaseFromMap] = useState<string | null>(null);
 
   const fetchComplaints = useCallback(async () => {
     const { data, error: fetchErr } = await supabase
@@ -25,7 +31,8 @@ export default function App() {
       .order('created_at', { ascending: false });
 
     if (fetchErr) {
-      setError('Nuk mund të ngarkohen ankesat.');
+      setComplaints(DEMO_COMPLAINTS);
+      setError(null);
     } else {
       setComplaints(data || []);
       setError(null);
@@ -48,12 +55,20 @@ export default function App() {
     };
   }, [fetchComplaints]);
 
-  const tabs: { id: Tab; label: string; icon: typeof MapPin }[] = [
+  const baseTabs: { id: Tab; label: string; icon: typeof MapPin }[] = [
     { id: 'map', label: 'Hartë', icon: MapPin },
     { id: 'report', label: 'Raporto', icon: Plus },
     { id: 'mine', label: 'Ankesat e mia', icon: FileText },
     { id: 'admin', label: 'Admin', icon: Shield },
   ];
+  const tabs = user ? (isAdmin ? baseTabs.filter((item) => item.id === 'map' || item.id === 'admin') : baseTabs.filter((item) => item.id !== 'admin')) : baseTabs;
+  const handleDemoStatusChange = (complaintId: string, status: Complaint['status']) => {
+    setComplaints((current) => current.map((complaint) => complaint.id === complaintId ? { ...complaint, status, updated_at: new Date().toISOString() } : complaint));
+  };
+  const handleDemoComplaint = (complaint: Complaint) => {
+    setComplaints((current) => [complaint, ...current]);
+    setTab('mine');
+  };
 
   const handleSignOut = async () => {
     await signOut();
@@ -108,7 +123,7 @@ export default function App() {
             <div className="flex items-center gap-2">
               <span className="hidden sm:flex items-center gap-1.5 text-xs text-slate-500">
                 <User size={14} />
-                {isAdmin ? 'Admin' : user.email}
+                {isSuperadmin ? 'Superadmin' : isAdmin ? 'Admin' : user.email}
               </span>
               <button
                 onClick={handleSignOut}
@@ -146,12 +161,16 @@ export default function App() {
           <>
             {tab === 'map' && (
               <div className="flex-1 relative">
-                <PublicMap complaints={complaints} />
+                <PublicMap
+                  complaints={complaints}
+                  canTakeCases={Boolean(user && isAdmin && !isSuperadmin)}
+                  onTakeCase={(complaintId) => { setAdminCaseFromMap(complaintId); setTab('admin'); }}
+                />
               </div>
             )}
             {tab === 'report' && (
               <div className="flex-1 overflow-y-auto pt-4">
-                <ComplaintForm onSubmitted={fetchComplaints} />
+                <ComplaintForm onSubmitted={fetchComplaints} onDemoSubmitted={handleDemoComplaint} />
               </div>
             )}
             {tab === 'mine' && (
@@ -168,6 +187,8 @@ export default function App() {
                 <AdminPanel
                   complaints={complaints}
                   onUpdate={fetchComplaints}
+                  onDemoStatusChange={handleDemoStatusChange}
+                  initialCaseId={adminCaseFromMap}
                   onLoginClick={() => setShowAuth(true)}
                 />
               </div>

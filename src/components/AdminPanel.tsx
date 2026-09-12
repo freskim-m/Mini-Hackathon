@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect, useCallback } from 'react';
-import { Shield, Clock, MapPin, CheckCircle2, Search, Filter, LogIn, Lock, ClipboardCheck, History, Users, UserRoundCheck, UserRoundX } from 'lucide-react';
+import { Shield, Clock, MapPin, CheckCircle2, Search, Filter, LogIn, Lock, ClipboardCheck, History, Users, UserRoundCheck, UserRoundX, ArrowLeft, ImagePlus } from 'lucide-react';
 import StatusBadge from './StatusBadge';
 import { supabase, CATEGORY_LABELS, CATEGORY_ICONS, STATUS_LABELS, type Complaint, type ComplaintStatus } from '@/lib/supabase';
 import { useAuth } from '@/lib/auth';
@@ -7,9 +7,16 @@ import { useAuth } from '@/lib/auth';
 interface AdminPanelProps {
   complaints: Complaint[];
   onUpdate: () => void;
+  onDemoStatusChange: (complaintId: string, status: ComplaintStatus) => void;
+  initialCaseId: string | null;
   onLoginClick: () => void;
 }
 
+const DEMO_ACCOUNTS = [
+  { id: '00000000-0000-4000-8000-000000000001', email: 'superadmin@demo.local', active: true, created_at: '2026-09-12T09:00:00.000Z' },
+  { id: '00000000-0000-4000-8000-000000000002', email: 'admin@demo.local', active: true, created_at: '2026-09-12T09:05:00.000Z' },
+  { id: '00000000-0000-4000-8000-000000000003', email: 'user@demo.local', active: true, created_at: '2026-09-12T09:10:00.000Z' },
+];
 function timeAgo(dateStr: string): string {
   const diff = Date.now() - new Date(dateStr).getTime();
   const hours = Math.floor(diff / 3600000);
@@ -21,8 +28,9 @@ function timeAgo(dateStr: string): string {
   return 'Tani';
 }
 
-export default function AdminPanel({ complaints, onUpdate, onLoginClick }: AdminPanelProps) {
+export default function AdminPanel({ complaints, onUpdate, onDemoStatusChange, initialCaseId, onLoginClick }: AdminPanelProps) {
   const { user, isAdmin, isSuperadmin, accountActive } = useAuth();
+  const isDemo = user?.email?.endsWith('@demo.local') === true;
   const [filterStatus, setFilterStatus] = useState<ComplaintStatus | 'all'>('all');
   const [search, setSearch] = useState('');
   const [updating, setUpdating] = useState<string | null>(null);
@@ -30,9 +38,13 @@ export default function AdminPanel({ complaints, onUpdate, onLoginClick }: Admin
   const [activity, setActivity] = useState<{ id: string; complaint_id: string | null; action: string; created_at: string; details: { status?: string } }[]>([]);
   const [accounts, setAccounts] = useState<{ id: string; email: string; active: boolean; created_at: string }[]>([]);
   const [adminIds, setAdminIds] = useState<Set<string>>(new Set());
+  const [selectedCaseId, setSelectedCaseId] = useState<string | null>(null);
+  const [workReport, setWorkReport] = useState('');
+  const [workPhoto, setWorkPhoto] = useState<string | null>(null);
+  const [accountHistoryId, setAccountHistoryId] = useState<string | null>(null);
 
   const loadAdminData = useCallback(async () => {
-    if (!isAdmin) return;
+    if (!isAdmin || isDemo) return;
     const [assignmentResult, activityResult, profileResult, adminsResult] = await Promise.all([
       supabase.from('complaint_assignments').select('complaint_id, admin_id'),
       supabase.from('admin_activity_log').select('id, complaint_id, action, created_at, details').order('created_at', { ascending: false }).limit(20),
@@ -43,9 +55,19 @@ export default function AdminPanel({ complaints, onUpdate, onLoginClick }: Admin
     setActivity(activityResult.data ?? []);
     if (isSuperadmin) setAccounts(profileResult.data ?? []);
     if (isSuperadmin) setAdminIds(new Set((adminsResult.data ?? []).map((admin) => admin.id)));
-  }, [isAdmin, isSuperadmin]);
+  }, [isAdmin, isSuperadmin, isDemo]);
 
   useEffect(() => { void loadAdminData(); }, [loadAdminData]);
+  useEffect(() => {
+    if (isDemo && isSuperadmin) {
+      setAccounts(DEMO_ACCOUNTS);
+      setAdminIds(new Set([DEMO_ACCOUNTS[0].id, DEMO_ACCOUNTS[1].id]));
+    }
+  }, [isDemo, isSuperadmin]);  useEffect(() => {
+    if (!initialCaseId || isSuperadmin || !user) return;
+    if (isDemo) setAssignments((current) => ({ ...current, [initialCaseId]: user.id }));
+    setSelectedCaseId(initialCaseId);
+  }, [initialCaseId, isDemo, isSuperadmin, user]);
 
   const filtered = useMemo(() => {
     let result = [...complaints].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
@@ -69,35 +91,64 @@ export default function AdminPanel({ complaints, onUpdate, onLoginClick }: Admin
 
   const handleStatusChange = async (complaintId: string, newStatus: ComplaintStatus) => {
     setUpdating(complaintId);
+    if (isDemo) {
+      onDemoStatusChange(complaintId, newStatus);
+      setActivity((current) => [{ id: `demo-${Date.now()}`, complaint_id: complaintId, action: newStatus === 'zgjidhur' ? 'completed' : 'status_changed', created_at: new Date().toISOString(), details: { status: newStatus } }, ...current]);
+      setUpdating(null);
+      return;
+    }
     const { error } = await supabase.rpc('update_complaint_status', { p_complaint_id: complaintId, p_status: newStatus });
-
     setUpdating(null);
     if (!error) { onUpdate(); void loadAdminData(); }
   };
 
   const handleTakeCase = async (complaintId: string) => {
+    if (isDemo && user) {
+      setAssignments((current) => ({ ...current, [complaintId]: user.id }));
+      setActivity((current) => [{ id: `assignment-${Date.now()}`, complaint_id: complaintId, action: 'assigned', created_at: new Date().toISOString(), details: {} }, ...current]);
+      setSelectedCaseId(complaintId);
+      return;
+    }
     setUpdating(complaintId);
     const { error } = await supabase.rpc('take_complaint', { p_complaint_id: complaintId });
     setUpdating(null);
-    if (!error) void loadAdminData();
+    if (!error) { void loadAdminData(); setSelectedCaseId(complaintId); }
   };
-
   const handleAccountActive = async (accountId: string, active: boolean) => {
+    if (isDemo) { setAccounts((current) => current.map((account) => account.id === accountId ? { ...account, active } : account)); return; }
     const { error } = await supabase.rpc('set_account_active', { p_user_id: accountId, p_active: active });
     if (!error) void loadAdminData();
   };
 
   const handleAdminAccess = async (accountId: string, enabled: boolean) => {
+    if (isDemo) { setAdminIds((current) => { const next = new Set(current); if (enabled) next.add(accountId); else next.delete(accountId); return next; }); return; }
     const { error } = await supabase.rpc('set_admin_access', { p_user_id: accountId, p_enabled: enabled });
     if (!error) void loadAdminData();
   };
 
   const handleDeleteAccount = async (accountId: string, email: string) => {
+    if (isDemo) { setAccounts((current) => current.filter((account) => account.id !== accountId)); return; }
     if (!window.confirm(`A jeni të sigurt që doni ta fshini përgjithmonë llogarinë ${email}?`)) return;
     const { error } = await supabase.rpc('delete_account', { p_user_id: accountId });
     if (!error) void loadAdminData();
   };
 
+  const selectedCase = !isSuperadmin && selectedCaseId ? complaints.find((item) => item.id === selectedCaseId) : null;
+  if (selectedCase) {
+    return (
+      <div className="max-w-2xl mx-auto px-4 pb-8">
+        <button onClick={() => setSelectedCaseId(null)} className="flex items-center gap-2 text-sm font-semibold text-slate-600 mb-4"><ArrowLeft size={18} /> Kthehu te rastet</button>
+        <div className="bg-white rounded-2xl border border-slate-200 p-5 space-y-5">
+          <div className="flex items-center justify-between gap-3"><div><h2 className="text-lg font-bold">Rasti i marrë për detyrë</h2><p className="text-sm text-slate-500">{CATEGORY_LABELS[selectedCase.category]}</p></div><StatusBadge status={selectedCase.status} /></div>
+          <p className="text-sm text-slate-700">{selectedCase.description}</p>
+          <p className="text-xs text-slate-400 flex gap-1 items-center"><MapPin size={14} /> {selectedCase.lat.toFixed(5)}, {selectedCase.lng.toFixed(5)}</p>
+          {selectedCase.status === 'pranuar' && <button onClick={() => void handleStatusChange(selectedCase.id, 'ne_punim')} className="w-full py-3 rounded-xl bg-amber-500 text-white font-semibold">Fillo punën — bëje Në punim</button>}
+          {selectedCase.status === 'ne_punim' && <div className="space-y-3 border-t pt-4"><h3 className="font-bold text-sm">Raporti i përfundimit</h3><textarea value={workReport} onChange={(e) => setWorkReport(e.target.value)} placeholder="Përshkruani çfarë u krye..." rows={4} className="w-full p-3 rounded-xl border border-slate-200 text-sm" /><label className="flex items-center justify-center gap-2 py-3 rounded-xl border border-dashed border-slate-300 text-sm text-slate-600 cursor-pointer"><ImagePlus size={18} /> Ngarko foto të punimit<input type="file" accept="image/*" className="hidden" onChange={(e) => { const file = e.target.files?.[0]; if (file) setWorkPhoto(URL.createObjectURL(file)); }} /></label>{workPhoto && <img src={workPhoto} alt="Punimi i kryer" className="w-full h-44 object-cover rounded-xl" />}<button disabled={!workReport.trim()} onClick={() => { void handleStatusChange(selectedCase.id, 'zgjidhur'); setSelectedCaseId(null); setWorkReport(''); setWorkPhoto(null); }} className="w-full py-3 rounded-xl bg-green-600 text-white font-semibold disabled:opacity-50">Dërgo raportin dhe mbyll rastin</button></div>}
+          {selectedCase.status === 'zgjidhur' && <div className="p-3 rounded-xl bg-green-50 text-green-700 text-sm font-semibold">Rasti është zgjidhur.</div>}
+        </div>
+      </div>
+    );
+  }
   if (!user || !isAdmin || !accountActive) {
     return (
       <div className="max-w-md mx-auto px-4 pt-12">
@@ -149,7 +200,7 @@ export default function AdminPanel({ complaints, onUpdate, onLoginClick }: Admin
         </div>
       </div>
 
-      <div className="grid md:grid-cols-2 gap-4 mb-5">
+{!isSuperadmin && <div className="grid md:grid-cols-2 gap-4 mb-5">
         <section className="bg-white border border-slate-200 rounded-2xl p-4">
           <h3 className="font-bold text-sm text-slate-800 flex items-center gap-2 mb-3"><ClipboardCheck size={17} className="text-blue-600" /> Rastet e mia</h3>
           <p className="text-2xl font-bold text-blue-600">{Object.values(assignments).filter((adminId) => adminId === user.id).length}</p>
@@ -162,7 +213,7 @@ export default function AdminPanel({ complaints, onUpdate, onLoginClick }: Admin
             {activity.length === 0 && <p>Nuk ka veprime të regjistruara ende.</p>}
           </div>
         </section>
-      </div>
+      </div>}
 
       {isSuperadmin && (
         <section className="bg-white border border-slate-200 rounded-2xl p-4 mb-5">
@@ -177,6 +228,7 @@ export default function AdminPanel({ complaints, onUpdate, onLoginClick }: Admin
                 {account.id !== user.id && <button onClick={() => handleAdminAccess(account.id, !adminIds.has(account.id))} className="text-xs font-semibold px-2.5 py-1.5 rounded-lg text-blue-700 bg-blue-50">
                   {adminIds.has(account.id) ? 'Hiq adminin' : 'Bëje admin'}
                 </button>}
+                {account.id !== user.id && <button onClick={() => setAccountHistoryId(accountHistoryId === account.id ? null : account.id)} className="text-xs font-semibold px-2.5 py-1.5 rounded-lg text-slate-700 bg-slate-100">Histori</button>}
                 {account.id !== user.id && <button onClick={() => handleDeleteAccount(account.id, account.email)} className="text-xs font-semibold px-2.5 py-1.5 rounded-lg text-red-700 bg-red-50">Fshije</button>}
               </div>
             ))}
@@ -239,36 +291,14 @@ export default function AdminPanel({ complaints, onUpdate, onLoginClick }: Admin
               </div>
             </div>
 
-            {/* Status changer */}
-            <div className="mt-3 flex items-center gap-2">
-              {assignments[c.id] !== user.id && !isSuperadmin ? (
-                <button onClick={() => handleTakeCase(c.id)} disabled={updating === c.id} className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50">
-                  {assignments[c.id] ? 'Merre përsipër' : 'Merre rastin'}
+            {!isSuperadmin && (
+              <div className="mt-3 flex items-center justify-between gap-2 border-t border-slate-100 pt-3">
+                <span className="text-xs text-slate-500">Përditësimi bëhet te faqja e rastit.</span>
+                <button onClick={() => void handleTakeCase(c.id)} disabled={updating === c.id} className="px-3 py-2 rounded-lg text-xs font-semibold bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50">
+                  {assignments[c.id] === user.id ? 'Hape rastin tim' : assignments[c.id] ? 'Merre përsipër' : 'Merre rastin'}
                 </button>
-              ) : (
-                <span className="text-xs font-semibold text-blue-600">{assignments[c.id] === user.id ? 'Rasti im' : 'Superadmin'}</span>
-              )}
-              <span className="text-xs font-semibold text-slate-500">Ndrysho statusin:</span>
-              <div className="flex gap-1.5">
-                {(['pranuar', 'ne_punim', 'zgjidhur'] as ComplaintStatus[]).map((s) => (
-                  <button
-                    key={s}
-                    onClick={() => handleStatusChange(c.id, s)}
-                    disabled={updating === c.id || c.status === s || (!isSuperadmin && assignments[c.id] !== user.id)}
-                    className={`px-3 py-1.5 rounded-lg text-xs font-semibold border transition ${
-                      c.status === s
-                        ? s === 'pranuar' ? 'bg-red-500 text-white border-red-500'
-                          : s === 'ne_punim' ? 'bg-amber-500 text-white border-amber-500'
-                          : 'bg-green-500 text-white border-green-500'
-                        : 'bg-white text-slate-600 border-slate-200 hover:border-slate-300'
-                    } ${updating === c.id ? 'opacity-50' : ''}`}
-                  >
-                    {STATUS_LABELS[s]}
-                  </button>
-                ))}
               </div>
-            </div>
-          </div>
+            )}          </div>
         ))}
         {filtered.length === 0 && (
           <div className="text-center text-slate-400 py-12">

@@ -39,10 +39,7 @@ export default function MyComplaints({ complaints, onUpdate, onLoginClick }: MyC
   }, [complaints, user]);
 
   const handleConfirmResolved = async (complaintId: string) => {
-    const { error } = await supabase
-      .from('complaints')
-      .update({ confirmed_by_reporter: true })
-      .eq('id', complaintId);
+    const { error } = await supabase.rpc('confirm_complaint_resolution', { p_complaint_id: complaintId });
 
     if (!error) onUpdate();
   };
