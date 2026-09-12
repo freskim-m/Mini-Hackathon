@@ -1,0 +1,49 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+html, body, #root {
+  height: 100%;
+  margin: 0;
+}
+
+.leaflet-container {
+  font-family: inherit;
+  z-index: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.leaflet-popup-content-wrapper {
+  border-radius: 12px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+
+.leaflet-popup-content {
+  margin: 12px;
+}
+
+.leaflet-control-zoom {
+  border-radius: 8px !important;
+  overflow: hidden;
+}
+
+.leaflet-popup-pane {
+  z-index: 1000;
+}
+
+.custom-pin {
+  background: transparent;
+  border: none;
+}
+
+/* Prevent body scroll bounce on iOS */
+body {
+  overscroll-behavior-y: none;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* Ensure touch events work on Leaflet for mobile */
+.leaflet-container {
+  touch-action: manipulation;
+}
